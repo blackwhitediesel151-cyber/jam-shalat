@@ -9,38 +9,69 @@ permissions:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android packages
+      - name: Install Android SDK packages
+        shell: bash
         run: |
-          yes | sdkmanager --licenses || true
+          set -e
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-
-      - name: Build APK
+      - name: Verify Android SDK
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME/platforms/android-35"
+          test -d "$ANDROID_HOME/build-tools/35.0.0"
+          sdkmanager --list_installed
+
+      - name: Check project files
+        run: |
+          test -f gradlew || {
+            echo "::error::gradlew tidak ditemukan di root repository"
+            exit 1
+          }
+          test -d app || {
+            echo "::error::Folder app tidak ditemukan"
+            exit 1
+          }
+          chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK" || {
+            echo "::error::APK tidak ditemukan"
+            exit 1
+          }
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: JamTV-ExtremeLite-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
